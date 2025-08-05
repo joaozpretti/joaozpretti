@@ -10,7 +10,7 @@ def deepai_generate(prompt):
     r = requests.post(
         "https://api.deepai.org/api/text-generator",
         data={'text': prompt},
-        headers={'api-key': DEEPAI_API_KEY}
+        headers={'api-key': 838caf3d-a0f8-4629-938b-4e4e0a182d1d}
     )
     try:
         return r.json()["output"]
