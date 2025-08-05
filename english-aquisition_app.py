@@ -1,107 +1,72 @@
 import streamlit as st
-from deep_translator import GoogleTranslator
+import requests
 from gtts import gTTS
-import pygame
 import tempfile
-import os
+import base64
 
-st.set_page_config(page_title="Aquisicao de Inglês AI", layout="wide")
-st.title("🧠 English Acquisition LAB - Online")
+DEEPAI_API_KEY = st.secrets["deepai_api_key"] if "deepai_api_key" in st.secrets else "SUA_DEEPAI_API_KEY"
 
-# Funções
-def gerar_frase_associativa_g4f(expressao):
+def deepai_generate(prompt):
+    r = requests.post(
+        "https://api.deepai.org/api/text-generator",
+        data={'text': prompt},
+        headers={'api-key': DEEPAI_API_KEY}
+    )
+    try:
+        return r.json()["output"]
+    except Exception as e:
+        return f"[ERRO DeepAI]: {r.text}"
+
+def gerar_frase_associativa(expressao):
     prompt = (
-        f"Você é um gerador de frases para aquisição de inglês. "
-        f"Sempre crie uma frase curta e natural em inglês usando ou começando com '{expressao}', "
-        f"e logo depois concatene com uma ideia relevante para o final da frase em português, no formato: "
-        f"[frase completa em inglês] + [continuação em português associada ao contexto]. "
-        f"Exemplo: What's that sound + que acordei no meio da noite ouvindo.\n"
-        f"Agora gere uma frase para '{expressao}' no mesmo formato:"
+        f"Crie uma frase curta e natural em inglês começando com '{expressao}', "
+        f"e depois, em português, explique o contexto ou finalize a ideia. "
+        f"Formato: [frase em inglês] + [continuação em português]."
     )
-    response = g4f.ChatCompletion.create(
-        model='gpt-4',
-        messages=[{"role": "user", "content": prompt}],
-        stream=False
-    )
-    return response.strip()
+    return deepai_generate(prompt)
 
-def traduzir_tudo_para_pt_gpt(frase_completa):
-    prompt = (
-        f"Traduza a frase abaixo para o português natural e fluente, juntando todas as partes em uma frase só:\n\n{frase_completa}"
-    )
-    response = g4f.ChatCompletion.create(
-        model='gpt-4',
-        messages=[{"role": "user", "content": prompt}],
-        stream=False
-    )
-    return response.strip()
-
-def traduzir_tudo_para_en(frase_completa):
-    prompt = (
-        f"Traduza a frase abaixo para o inglês natural, juntando todas as partes num texto único e fluente, mantendo o sentido e contexto:\n\n{frase_completa}"
-    )
-    response = g4f.ChatCompletion.create(
-        model='gpt-4',
-        messages=[{"role": "user", "content": prompt}],
-        stream=False
-    )
-    return response.strip()
-
-def quiz(frase_en, frase_pt):
-    prompt = (
-        f"Crie uma pergunta de múltipla escolha (quiz) com 4 alternativas, sobre a frase inglesa abaixo e sua tradução. Pergunte algo relevante sobre vocabulário, gramática ou significado. Responda no formato:\nPergunta:\nA)\nB)\nC)\nD)\nResposta correta: (letra)\n\nFrase em inglês: {frase_en}\nTradução: {frase_pt}"
-    )
-    response = g4f.ChatCompletion.create(
-        model='gpt-4',
-        messages=[{"role": "user", "content": prompt}],
-        stream=False
-    )
-    return response.strip()
+def traduzir_para(texto, destino="pt"):
+    if destino == "pt":
+        prompt = f"Traduza para português brasileiro de forma natural: {texto}"
+    else:
+        prompt = f"Traduza para inglês natural: {texto}"
+    return deepai_generate(prompt)
 
 def gerar_contexto(frase_en):
     prompt = (
-        f"Crie um mini-diálogo ou exemplo de uso real para esta frase em inglês, com contexto natural e curto. Mostre só o diálogo/situação, sem tradução.\n\nFrase: {frase_en}"
+        f"Crie um mini-diálogo curto (em inglês) usando a frase '{frase_en}'."
     )
-    response = g4f.ChatCompletion.create(
-        model='gpt-4',
-        messages=[{"role": "user", "content": prompt}],
-        stream=False
-    )
-    return response.strip()
+    return deepai_generate(prompt)
 
-# Interface
-with st.form("frase_form"):
-    expressao = st.text_input("Digite a palavra, frase ou expressão em inglês", "")
-    submitted = st.form_submit_button("Gerar Frase")
+def tts_audio(text, lang='en'):
+    tts = gTTS(text=text, lang=lang)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
+        tts.save(fp.name)
+        audio_file = open(fp.name, "rb")
+        audio_bytes = audio_file.read()
+        st.audio(audio_bytes, format='audio/mp3')
+        audio_file.close()
 
-if expressao and submitted:
-    st.info("Gerando frase e contexto... aguarde ⏳")
-    resultado = gerar_frase_associativa_g4f(expressao)
-    frase_pt = traduzir_tudo_para_pt_gpt(resultado)
-    frase_en = traduzir_tudo_para_en(resultado)
+st.title("English Acquisition LAB (DeepAI)")
+
+expressao = st.text_input("Digite a palavra, frase ou expressão em inglês:")
+
+if expressao:
+    resultado = gerar_frase_associativa(expressao)
+    st.markdown(f"**▶ ASSOCIATIVO EN+PT:**")
+    st.success(resultado)
+
+    frase_pt = traduzir_para(resultado, destino="pt")
+    frase_en = traduzir_para(resultado, destino="en")
+
+    st.markdown(f"**★ TOTALMENTE EM PORTUGUÊS:**\n{frase_pt}")
+    st.markdown(f"**★ TOTALMENTE EM INGLÊS:**\n{frase_en}")
+
+    st.markdown("**▶ MINI-DIÁLOGO/CONTEXTO:**")
     contexto = gerar_contexto(frase_en)
-    st.markdown(f"### Associativo EN+PT:\n> **{resultado}**")
-    st.success(f"**Português:** {frase_pt}")
-    st.info(f"**Inglês:** {frase_en}")
-    st.markdown(f"---\n#### Mini-Diálogo/Contexto:\n{contexto}")
+    st.info(contexto)
 
-    st.markdown("---")
-    st.subheader("Quiz Rápido")
-    st.caption("Teste sua compreensão:")
-    quiz_ = quiz(frase_en, frase_pt)
-    st.code(quiz_, language="markdown")
+    if st.button("Ouvir frase em inglês"):
+        tts_audio(frase_en, lang="en")
 
-    # TTS para escutar (só funciona local, não web)
-    # try:
-    #     tts = gTTS(frase_en, lang="en")
-    #     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
-    #         tts.save(f.name)
-    #         audio_file = open(f.name, "rb")
-    #         st.audio(audio_file.read(), format="audio/mp3")
-    # except Exception as e:
-    #     st.warning("Erro ao gerar áudio TTS.")
-else:
-    st.warning("Digite uma expressão/frase e clique em Gerar Frase.")
-
-st.markdown("---\n_Criado para aquisição de inglês via IA. Deploy gratuito: [Streamlit Cloud](https://streamlit.io/cloud)_")
-
+    # Você pode adicionar os outros módulos (quiz, explicação, feedback, etc) da mesma forma usando deepai_generate(prompt)
