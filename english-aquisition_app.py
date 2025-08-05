@@ -1,5 +1,4 @@
 import streamlit as st
-import g4f
 from deep_translator import GoogleTranslator
 from gtts import gTTS
 import pygame
